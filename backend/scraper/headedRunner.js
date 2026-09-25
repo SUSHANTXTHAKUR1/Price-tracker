@@ -33,6 +33,23 @@ async function launchBrowser() {
   }
 }
 
+async function dismissConsentModal(page) {
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const consentBox = page.locator('.consent-box, .consent-scrim, [role="dialog"][aria-label="Privacy preferences"]').first();
+    const isVisible = await consentBox.isVisible({ timeout: 400 }).catch(() => false);
+    if (isVisible) {
+      console.log(`🍪 Cookie consent popup detected (attempt ${attempt + 1})! Auto-clicking Allow...`);
+      const allowBtn = page.locator('button[aria-label="Allow cookies"], .consent-box button:has-text("Allow"), .consent-box button').first();
+      if (await allowBtn.isVisible().catch(() => false)) {
+        await allowBtn.click({ force: true }).catch(() => {});
+        await delay(250);
+      }
+    } else {
+      break;
+    }
+  }
+}
+
 async function runHeadedScraper() {
   console.log('='.repeat(68));
   console.log('🎬  STARTING OBSERVABLE HEADED SCRAPER (PLAYWRIGHT)');
@@ -68,27 +85,20 @@ async function runHeadedScraper() {
     try {
       // 1. Navigate to product page
       await page.goto(itemUrl, { waitUntil: 'domcontentloaded', timeout: 25000 });
-      await delay(1200);
+      await delay(1000);
 
       // 2. Check for Cookie Consent Dialog & Dismiss if present
-      const consentModal = page.locator('.consent-box');
-      if (await consentModal.isVisible({ timeout: 1500 }).catch(() => false)) {
-        console.log('🍪 Cookie consent dialog detected! Auto-dismissing...');
-        const allowBtn = consentModal.locator('button:has-text("Allow"), button:has-text("Accept")').first();
-        if (await allowBtn.isVisible()) {
-          await allowBtn.click();
-          await delay(600);
-        }
-      }
+      await dismissConsentModal(page);
 
       // 3. Option Variant Selection
       console.log(`🔘 Selecting variant option chip: ${product.option}`);
+      await dismissConsentModal(page);
       const optChips = page.locator('.opt-chip');
       const chipCount = await optChips.count();
       if (chipCount > 0) {
         const targetChip = page.locator(`.opt-chip`).nth(product.option === 'o2' && chipCount > 1 ? 1 : 0);
         await targetChip.click();
-        await delay(900);
+        await delay(800);
       }
 
       // 4. Simulate natural mouse hover over price area (satisfies anti-scrape minMoves/minDwellMs)
@@ -98,16 +108,31 @@ async function runHeadedScraper() {
       const box = await offerPanel.boundingBox();
 
       if (box) {
-        for (let i = 0; i < 10; i++) {
-          await page.mouse.move(box.x + 20 + i * 15, box.y + 20 + (i % 3) * 10);
-          await delay(90);
+        for (let i = 0; i < 16; i++) {
+          await dismissConsentModal(page);
+          await page.mouse.move(box.x + 25 + (i * 12), box.y + 25 + ((i % 4) * 8));
+          await delay(80);
         }
       }
-      await delay(700);
+      await delay(600);
+      await dismissConsentModal(page);
 
       // 5. Click "Check today's price" button if present
-      const checkBtn = page.locator('button:has-text("Check today’s price"), button:has-text("Check today\'s price")').first();
-      if (await checkBtn.isVisible({ timeout: 1500 }).catch(() => false)) {
+      const checkBtn = page.locator('button:has-text("Check today’s price"), button:has-text("Check today\'s price"), .offer-locked button').first();
+      if (await checkBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+        // Ensure button is enabled by moving mouse if still disabled
+        let isEnabled = await checkBtn.isEnabled().catch(() => false);
+        let retries = 0;
+        while (!isEnabled && retries < 12) {
+          await dismissConsentModal(page);
+          if (box) {
+            await page.mouse.move(box.x + 30 + (retries * 12), box.y + 20 + ((retries % 3) * 8));
+          }
+          await delay(200);
+          isEnabled = await checkBtn.isEnabled().catch(() => false);
+          retries++;
+        }
+
         console.log('⚡ Clicking "Check today’s price" button...');
         await checkBtn.click();
       }
