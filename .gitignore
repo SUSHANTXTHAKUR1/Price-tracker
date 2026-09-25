@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+*/node_modules/
+
+# Environment variables (keep secrets safe)
+.env
+backend/.env
+frontend/.env
+*.env.local
+
+# Production build files
+dist/
+build/
+*/dist/
+
+# Playwright & Browser binaries
+.playwright/
+test-results/
+
+# System and logs
+*.log
+.DS_Store
+Thumbs.db
